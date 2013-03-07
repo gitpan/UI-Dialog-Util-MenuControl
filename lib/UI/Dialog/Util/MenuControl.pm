@@ -1,7 +1,7 @@
-package UI::Dialog::Util::MenuControl; ## Produces a simple progress bar
+package UI::Dialog::Util::MenuControl; ## Is a menu maker for dialog.
 
 
-our $VERSION='0.02';
+our $VERSION='0.03';
 
 
 use strict;
@@ -282,7 +282,7 @@ sub dialog{
 
 =head1 NAME
 
-UI::Dialog::Util::MenuControl - Produces a simple progress bar
+UI::Dialog::Util::MenuControl - Is a menu maker for dialog
 
 
 =head1 SYNOPSIS
