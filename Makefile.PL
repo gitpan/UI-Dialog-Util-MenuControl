@@ -16,7 +16,7 @@ WriteMakefile1(
           'VERSION_FROM' => 'lib/UI/Dialog/Util/MenuControl.pm',
           'PREREQ_PM' => {
                            'strict' => 0,
-                           'Carp' => 0,
+                           'UI::Dialog::Backend' => 0,
                          },
           'INSTALLDIRS' => 'site',
           'PL_FILES' => {},

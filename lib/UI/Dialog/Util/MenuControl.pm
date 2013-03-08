@@ -1,11 +1,10 @@
-package UI::Dialog::Util::MenuControl; ## Is a menu maker for dialog.
+package UI::Dialog::Util::MenuControl; ## A menu maker for dialog
 
 
-our $VERSION='0.03';
+our $VERSION='0.04';
 
 
 use strict;
-use Carp;
 use vars qw($VERSION);
 
 
@@ -62,12 +61,19 @@ use vars qw($VERSION);
 #
 # To build a menu, you can nest nodes with the attributes
 #   
-#   title
-#   function    a reference to a function.
-#   condition   a reference to a function given a boolean result whether to display the item or not
-#   entries     array ref to further nodes
-#   context     a 'self" for the called function
-#   
+# title
+# function    a reference to a function.
+# condition   a reference to a function given a boolean result whether to display the item or not
+# entries     array ref to further nodes
+# context     a 'self" for the called function
+# 
+# Context
+# =======
+# 
+# The context you can use globaly (via constructor) or in a node, can be used in different ways.
+# It is an important feature to keep object oriented features, because the function call from a menu
+# normaly does not know which object you want to use and usually you want to separate the menu from the
+# working object.
 #      
 #      ... 
 #      
@@ -87,10 +93,10 @@ use vars qw($VERSION);
 #                                      ],
 #                  };
 #
-#  In this example an object objA has been loaded before and provides a check() method.
-#  To run this check method in $objA context, you can tell a context to the node.
+# In this example an object objA has been loaded before and provides a check() method.
+# To run this check method in $objA context, you can tell a context to the node.
 #
-#  What does the absolute same:
+# What does the absolute same:
 #
 #      my $tree = {
 #                      title       =>  'Conditinal behaviour',
@@ -104,9 +110,35 @@ use vars qw($VERSION);
 #                                      ],
 #                  };
 #
+#
+# But here a more elegant way:
+#
+#      ... 
+#      
+#      our $objA = Local::UsecaseA->new();
+#      
+#      
+#      my $tree = {
+#                      title       =>  'Conditinal behaviour',
+#                      entries     =>  [
+#                                          {
+#                                              title       =>  'entry B',
+#                                              function    =>  'doB( "hello" )',  # it is a simple string. Also parameters possible.
+#                                              condition   =>  'check',           # called as method on $objA
+#                                          },
+#                      
+#                                      ],
+#                  };
+#
+#
+#    my $menu_control = UI::Dialog::Util::MenuControl->new(
+#                                                               menu    => $tree,
+#                                                               context => $objA,  # Set the context for methods
+#                                                         ); 
+#    
+#    $menu_control->run();
 #      
 #
-# Please consult the example files for more.
 #
 #
 #
@@ -117,14 +149,15 @@ use vars qw($VERSION);
 # AUTHOR
 # ======
 # Andreas Hernitscheck  ahernit(AT)cpan.org
-
-
+#
+#
 # parameters
 #
 #   context             context object wich can be used for all called procedures (self)
 #   backend             UI::Dialog Backend engine. E.g. CDialog (default), GDialog, KDialog, ...
 #   backend_settings    Values as hash transfered to backend constructor
 #   menu                Tree structure (see example above)
+#
 sub new { 
     my $pkg = shift;
     my $self = bless {}, $pkg;
@@ -197,11 +230,23 @@ sub showMenu {
         # context per element entry?
         my $context_elem = $e->{'context'};
 
+        my $condition = $e->{'condition'};
+
         # you can skip menu entries if a condition is false.
         # it is a boolean return of a function. So you can
         # use moose's attributes.
-        if ( exists $e->{'condition'} && defined($e->{'condition'}) ){
-            if ( not &{$e->{'condition'}}( $context_elem || $context) ){
+        if ( defined($condition) ){
+
+            my $cond_result;
+            my $used_context = $context_elem || $context;
+
+            if ( ref($condition) eq 'CODE' ){ # use a code ref like \& or sub{}
+                $cond_result = &{ $condition }( $used_context );
+            }elsif( not ref($condition) ){ # assume a name of a function in context
+                eval( "\$cond_result = \$used_context->$condition");
+            }
+            
+            if ( not $cond_result ){
                 next menubuild;
             } 
         }
@@ -221,6 +266,9 @@ sub showMenu {
     # selection in the menu?
     if ( $sel ) {
         
+
+        my $function = $entries->{ $sel }->{'function'};
+
         # does the selected item has a submenu?
         if ( $entries->{ $sel }->{'entries'} ){
        
@@ -228,8 +276,13 @@ sub showMenu {
             $self->_currentNode()->{'parent'} = $pos;
             $self->showMenu();            
             
-        }elsif( $entries->{ $sel }->{'function'} ){ # or is it a function call?
-            &{ $entries->{ $sel }->{'function'} }( $context );
+        }elsif( $function ){ # or is it a function call?
+
+            if ( ref($function) eq 'CODE' ){ # use a code ref like \& or sub{}
+                &{ $entries->{ $sel }->{'function'} }( $context );
+            }elsif( not ref($function) ){ # assume a name of a function in context
+                eval( "\$context->$function" );
+            }
         }
         
     }else{
@@ -247,6 +300,8 @@ sub showMenu {
     
     return $retval;                      
 }
+
+
 
 # Points to the current displayed node in the menu tree.
 sub _currentNode{
@@ -278,11 +333,12 @@ sub dialog{
 1;
 
 
+
 #################### pod generated by Pod::Autopod - keep this line to make pod updates possible ####################
 
 =head1 NAME
 
-UI::Dialog::Util::MenuControl - Is a menu maker for dialog
+UI::Dialog::Util::MenuControl - A menu maker for dialog
 
 
 =head1 SYNOPSIS
@@ -332,12 +388,215 @@ UI::Dialog::Util::MenuControl - Is a menu maker for dialog
 
 To build a menu, you can nest nodes with the attributes
   
-  title
-  function    a reference to a function.
-  condition   a reference to a function given a boolean result whether to display the item or not
-  entries     array ref to further nodes
-  context     a 'self" for the called function
-  
+title
+function    a reference to a function.
+condition   a reference to a function given a boolean result whether to display the item or not
+entries     array ref to further nodes
+context     a 'self" for the called function
+
+
+
+=head1 DESCRIPTION
+
+It is an OO class to render a Dialog menu by a tree of array and hashes
+with specific form.
+a shell. It does not use curses and has no large dependencies.
+
+
+
+
+=head1 REQUIRES
+
+L<UI::Dialog::Util::MenuControl> 
+
+
+=head1 METHODS
+
+=head2 new
+
+ $self->new();
+
+It is an OO class to render a Dialog menu by a tree of array and hashes
+with specific form.
+a shell. It does not use curses and has no large dependencies.
+
+
+SYNOPSIS
+========
+
+
+   use UI::Dialog::Util::MenuControl;
+
+   my $tree = {
+                   title       =>  'Conditinal behaviour',
+                   entries     =>  [
+                                       {
+                                           title       =>  'entry A (prework for B)',
+                                           function    =>  \&doA,
+                                           condition   =>  undef,
+                                       },
+                                       {
+                                           title       =>  'entry B',
+                                           function    =>  \&doB,
+                                           condition   =>  \&aWasCalled,
+                                       },
+                                       {
+                                           title       =>  'reset A (undo prework)',
+                                           function    =>  \&resetA,
+                                           condition   =>  \&aWasCalled,
+                                       },
+                                       {
+                                           title       =>  'has also submenus',
+                                           entries     =>  [
+                                                               {
+                                                                   title   =>  'sub b 1',
+                                                               },
+                                                               {
+                                                                   title   =>  'sub b 2',
+                                                               },
+                                                           ]
+                                       },
+
+                                   ],
+               };
+
+
+
+   my $menu_control = UI::Dialog::Util::MenuControl->new( menu => $tree );
+
+   $menu_control->run();
+
+To build a menu, you can nest nodes with the attributes
+
+title
+function    a reference to a function.
+condition   a reference to a function given a boolean result whether to display the item or not
+entries     array ref to further nodes
+context     a 'self" for the called function
+
+Context
+=======
+
+The context you can use globaly (via constructor) or in a node, can be used in different ways.
+It is an important feature to keep object oriented features, because the function call from a menu
+normaly does not know which object you want to use and usually you want to separate the menu from the
+working object.
+
+     ...
+
+     our $objA = Local::UsecaseA->new();
+
+
+     my $tree = {
+                     title       =>  'Conditinal behaviour',
+                     entries     =>  [
+                                         {
+                                             title       =>  'entry B',
+                                             function    =>  \&doB,
+                                             condition   =>  \&Local::UsecaseA::check,
+                                             context     =>  $objA,
+                                         },
+
+                                     ],
+                 };
+
+In this example an object objA has been loaded before and provides a check() method.
+To run this check method in $objA context, you can tell a context to the node.
+
+What does the absolute same:
+
+     my $tree = {
+                     title       =>  'Conditinal behaviour',
+                     entries     =>  [
+                                         {
+                                             title       =>  'entry B',
+                                             function    =>  \&doB,
+                                             condition   =>  sub{ $objA->check() },
+                                         },
+
+                                     ],
+                 };
+
+
+But here a more elegant way:
+
+     ...
+
+     our $objA = Local::UsecaseA->new();
+
+
+     my $tree = {
+                     title       =>  'Conditinal behaviour',
+                     entries     =>  [
+                                         {
+                                             title       =>  'entry B',
+                                             function    =>  'doB( "hello" )',  # it is a simple string. Also parameters possible.
+                                             condition   =>  'check',           # called as method on $objA
+                                         },
+
+                                     ],
+                 };
+
+
+   my $menu_control = UI::Dialog::Util::MenuControl->new(
+                                                              menu    => $tree,
+                                                              context => $objA,  # Set the context for methods
+                                                        );
+
+   $menu_control->run();
+
+
+
+
+
+LICENSE
+=======
+You can redistribute it and/or modify it under the conditions of LGPL.
+
+AUTHOR
+======
+Andreas Hernitscheck  ahernit(AT)cpan.org
+
+
+parameters
+
+  context             context object wich can be used for all called procedures (self)
+  backend             UI::Dialog Backend engine. E.g. CDialog (default), GDialog, KDialog, ...
+  backend_settings    Values as hash transfered to backend constructor
+  menu                Tree structure (see example above)
+
+
+
+=head2 dialog
+
+ $self->dialog();
+
+Holds the backend dialog system.
+
+
+=head2 run
+
+ $self->run();
+
+Main loop method. Will return when the user selected the last exit field.
+
+
+=head2 showMenu
+
+ $self->showMenu();
+
+Main control unit, but usually called by run().
+If you call it by yourself, you have to build your own loop around.
+
+
+
+=head1 Context
+
+
+The context you can use globaly (via constructor) or in a node, can be used in different ways.
+It is an important feature to keep object oriented features, because the function call from a menu
+normaly does not know which object you want to use and usually you want to separate the menu from the
+working object.
      
      ... 
      
@@ -357,10 +616,10 @@ To build a menu, you can nest nodes with the attributes
                                      ],
                  };
 
- In this example an object objA has been loaded before and provides a check() method.
- To run this check method in $objA context, you can tell a context to the node.
+In this example an object objA has been loaded before and provides a check() method.
+To run this check method in $objA context, you can tell a context to the node.
 
- What does the absolute same:
+What does the absolute same:
 
      my $tree = {
                      title       =>  'Conditinal behaviour',
@@ -374,33 +633,44 @@ To build a menu, you can nest nodes with the attributes
                                      ],
                  };
 
+
+But here a more elegant way:
+
+     ... 
+     
+     our $objA = Local::UsecaseA->new();
+     
+     
+     my $tree = {
+                     title       =>  'Conditinal behaviour',
+                     entries     =>  [
+                                         {
+                                             title       =>  'entry B',
+                                             function    =>  'doB( "hello" )',  # it is a simple string. Also parameters possible.
+                                             condition   =>  'check',           # called as method on $objA
+                                         },
+                     
+                                     ],
+                 };
+
+
+   my $menu_control = UI::Dialog::Util::MenuControl->new(
+                                                              menu    => $tree,
+                                                              context => $objA,  # Set the context for methods
+                                                        ); 
+   
+   $menu_control->run();
      
 
-Please consult the example files for more.
 
 
 
 
 
-=head1 DESCRIPTION
+=head1 AUTHOR
 
-It is an OO class to render a Dialog menu by a tree of array and hashes
-with specific form.
-a shell. It does not use curses and has no large dependencies.
+Andreas Hernitscheck  ahernit(AT)cpan.org
 
-
-
-
-=head1 REQUIRES
-
-L<Carp> 
-
-
-=head1 METHODS
-
-=head2 new
-
- $obj = UI::Dialog::Util::MenuControl->new( menu => $tree );
 
 parameters
 
@@ -409,33 +679,6 @@ parameters
   backend_settings    Values as hash transfered to backend constructor
   menu                Tree structure (see example above)
 
-
-=head2 dialog
-
- $obj->dialog();
-
-Holds the backend dialog system.
-
-
-=head2 run
-
- $obj->run();
-
-Main loop method. Will return when the user selected the last exit field.
-
-
-=head2 showMenu
-
- $obj->showMenu();
-
-Main control unit, but usually called by run().
-If you call it by yourself, you have to build your own loop around.
-
-
-
-=head1 AUTHOR
-
-Andreas Hernitscheck  ahernit(AT)cpan.org
 
 
 =head1 LICENSE
