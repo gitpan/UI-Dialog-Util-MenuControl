@@ -1,7 +1,7 @@
 package UI::Dialog::Util::MenuControl; ## A menu maker for dialog
 
 
-our $VERSION='0.06';
+our $VERSION='0.07';
 
 
 use strict;
@@ -183,8 +183,11 @@ use vars qw($VERSION);
 # AUTHOR
 # ======
 # Andreas Hernitscheck  ahernit(AT)cpan.org
-#
-#
+
+
+
+
+
 # parameters
 #
 #   context             context object wich can be used for all called procedures (self)
