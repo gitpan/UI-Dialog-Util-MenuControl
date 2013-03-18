@@ -9,7 +9,7 @@ use warnings;
 use Test::More tests => 1;
 
 my @modules = qw(
-  UI::Dialog::Util::MenuControl;
+  String::ProgressBar
 );
 
 foreach my $module (@modules) {

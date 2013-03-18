@@ -1,7 +1,7 @@
 package UI::Dialog::Util::MenuControl; ## A menu maker for dialog
 
 
-our $VERSION='0.04';
+our $VERSION='0.06';
 
 
 use strict;
@@ -137,8 +137,42 @@ use vars qw($VERSION);
 #                                                         ); 
 #    
 #    $menu_control->run();
-#      
+# 
 #
+# Try a function
+# ==============
+# Normaly the application dies if inside a function call a die() will happen. But you can try a function
+# if it dies, it wont leave the menu.
+# Therefore you have to add the magic work "try " before the function. As with dialogs the user may hit "cancel",
+# I recomment to throw an exception (die) if that happens to make a difference to just "not entering a value".
+# But if this menu call that function directly, the menu might also die then.
+#
+#   ...
+#   function  => 'try askForValue',
+#   ...
+#
+# As a try will eat all errors, you can handle them; Use 'catch' as parameter to point to an error handler function.
+# This function will get the thrown error as first parameter.
+#
+#
+#   ...
+#   function  => 'try askForValue',
+#   catch     => 'showErrorWithDialog',
+#   ...
+#
+# The catch can also be globally set via constructor. So far catch can only take scalars describing a function in the same context
+# as the rest. A coderef won't work. Errors in the catcher can't be handled and the menu will realy die.
+#
+#
+#
+# Negative conditions
+# ===================
+# It is quite simple. Just add the magic word "not " or "!" in front of a condition.
+#
+#   ...
+#   function  => 'prepareFolder',
+#   condition => 'not isFolderPrepared',
+#   ...
 #
 #
 #
@@ -157,6 +191,7 @@ use vars qw($VERSION);
 #   backend             UI::Dialog Backend engine. E.g. CDialog (default), GDialog, KDialog, ...
 #   backend_settings    Values as hash transfered to backend constructor
 #   menu                Tree structure (see example above)
+#   catch               An error catching function, which retrieves the error if first param (only if 'try' used)
 #
 sub new { 
     my $pkg = shift;
@@ -219,6 +254,7 @@ sub showMenu {
 
     # node context or global or undef
     my $context = $pos->{'context'} || $self->{'context'} || undef;
+    my $catch = $pos->{'catch'} || $self->{'catch'} || undef;
 
     # prepare entries and remember further refs by
     # the selected number
@@ -232,6 +268,13 @@ sub showMenu {
 
         my $condition = $e->{'condition'};
 
+        # magic prefix "not" or "!" to negate condition?
+        my $negative = 0;
+        if ( $condition =~ s/^(not |\!)//i ){
+            $negative = 1;
+        }
+
+
         # you can skip menu entries if a condition is false.
         # it is a boolean return of a function. So you can
         # use moose's attributes.
@@ -244,9 +287,17 @@ sub showMenu {
                 $cond_result = &{ $condition }( $used_context );
             }elsif( not ref($condition) ){ # assume a name of a function in context
                 eval( "\$cond_result = \$used_context->$condition");
+                if ( $@ ){
+                    die $@;
+                }
             }
-            
-            if ( not $cond_result ){
+           
+            # show menu entry or skip to next
+            # negative negates the condition
+            if ( $cond_result xor $negative ) {
+                # positive means to render menu point
+            }else{
+                # that is negative and means skip
                 next menubuild;
             } 
         }
@@ -268,6 +319,9 @@ sub showMenu {
         
 
         my $function = $entries->{ $sel }->{'function'};
+        my $catchn    = $catch || $entries->{ $sel }->{'catch'};
+        my $context_elem = $entries->{ $sel }->{'context'};
+        my $used_context = $context_elem || $context;
 
         # does the selected item has a submenu?
         if ( $entries->{ $sel }->{'entries'} ){
@@ -278,10 +332,27 @@ sub showMenu {
             
         }elsif( $function ){ # or is it a function call?
 
+            # avoid to die if the function fails
+            my $dontdie;
+            if ( $function =~ s/^try //i ){
+                $dontdie = 1;
+            }
+
             if ( ref($function) eq 'CODE' ){ # use a code ref like \& or sub{}
-                &{ $entries->{ $sel }->{'function'} }( $context );
+                &{ $entries->{ $sel }->{'function'} }( $used_context );
             }elsif( not ref($function) ){ # assume a name of a function in context
-                eval( "\$context->$function" );
+                eval( "\$used_context->$function" );
+                if ( $@ ){
+                    die $@ if not $dontdie;
+
+                    # if a catch function is given (in context), forward the error
+                    if ( $dontdie && $catchn ){
+                        my $err = $@;
+                        if (not ref($catchn) ){
+                            eval( "\$used_context->$catchn( \$err )" );
+                        }
+                    }
+                }
             }
         }
         
@@ -331,6 +402,7 @@ sub dialog{
 
 
 1;
+
 
 
 
@@ -406,8 +478,6 @@ a shell. It does not use curses and has no large dependencies.
 
 
 =head1 REQUIRES
-
-L<UI::Dialog::Util::MenuControl> 
 
 
 =head1 METHODS
@@ -546,6 +616,40 @@ But here a more elegant way:
    $menu_control->run();
 
 
+Try a function
+==============
+Normaly the application dies if inside a function call a die() will happen. But you can try a function
+if it dies, it wont leave the menu.
+Therefore you have to add the magic work "try " before the function. As with dialogs the user may hit "cancel",
+I recomment to throw an exception (die) if that happens to make a difference to just "not entering a value".
+But if this menu call that function directly, the menu might also die then.
+
+  ...
+  function  => 'try askForValue',
+  ...
+
+As a try will eat all errors, you can handle them; Use 'catch' as parameter to point to an error handler function.
+This function will get the thrown error as first parameter.
+
+
+  ...
+  function  => 'try askForValue',
+  catch     => 'showErrorWithDialog',
+  ...
+
+The catch can also be globally set via constructor. So far catch can only take scalars describing a function in the same context
+as the rest. A coderef won't work. Errors in the catcher can't be handled and the menu will realy die.
+
+
+
+Negative conditions
+===================
+It is quite simple. Just add the magic word "not " or "!" in front of a condition.
+
+  ...
+  function  => 'prepareFolder',
+  condition => 'not isFolderPrepared',
+  ...
 
 
 
@@ -564,6 +668,7 @@ parameters
   backend             UI::Dialog Backend engine. E.g. CDialog (default), GDialog, KDialog, ...
   backend_settings    Values as hash transfered to backend constructor
   menu                Tree structure (see example above)
+  catch               An error catching function, which retrieves the error if first param (only if 'try' used)
 
 
 
@@ -587,6 +692,34 @@ Main loop method. Will return when the user selected the last exit field.
 
 Main control unit, but usually called by run().
 If you call it by yourself, you have to build your own loop around.
+
+
+
+=head1 Try a function
+
+Normaly the application dies if inside a function call a die() will happen. But you can try a function
+if it dies, it wont leave the menu.
+Therefore you have to add the magic work "try " before the function. As with dialogs the user may hit "cancel",
+I recomment to throw an exception (die) if that happens to make a difference to just "not entering a value".
+But if this menu call that function directly, the menu might also die then.
+
+  ...
+  function  => 'try askForValue',
+  ...
+
+As a try will eat all errors, you can handle them; Use 'catch' as parameter to point to an error handler function.
+This function will get the thrown error as first parameter.
+
+
+  ...
+  function  => 'try askForValue',
+  catch     => 'showErrorWithDialog',
+  ...
+
+The catch can also be globally set via constructor. So far catch can only take scalars describing a function in the same context
+as the rest. A coderef won't work. Errors in the catcher can't be handled and the menu will realy die.
+
+
 
 
 
@@ -660,8 +793,18 @@ But here a more elegant way:
                                                         ); 
    
    $menu_control->run();
-     
 
+
+
+
+=head1 Negative conditions
+
+It is quite simple. Just add the magic word "not " or "!" in front of a condition.
+
+  ...
+  function  => 'prepareFolder',
+  condition => 'not isFolderPrepared',
+  ...
 
 
 
@@ -678,6 +821,7 @@ parameters
   backend             UI::Dialog Backend engine. E.g. CDialog (default), GDialog, KDialog, ...
   backend_settings    Values as hash transfered to backend constructor
   menu                Tree structure (see example above)
+  catch               An error catching function, which retrieves the error if first param (only if 'try' used)
 
 
 
